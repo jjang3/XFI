@@ -1,0 +1,4 @@
+set disassembly-flavor att
+set environment LD_PRELOAD ./preload_sandbox.so
+b foo
+r

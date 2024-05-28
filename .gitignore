@@ -1,0 +1,5 @@
+*.so
+result
+*.c
+!lib.c
+!loader.c
