@@ -33,16 +33,14 @@ build()
         mkdir $input_result_path
     fi
     cd $input_path
+    cp "sandbox.c" $input_result_path
+    cp "loader.c" $input_result_path
     make ${input}.out
 }
 
-
 rewrite()
 {
-    echo "Assembly rewriting the application" 
-    cd ${rewrite_path} && python3 main.py --binary ${input}.out 
-    #--fun fun.list
-    cd ${arcs_i_result_path} && make lib && make ${input}.new
+    echo "Rewrite"
 }
 
 while true; do

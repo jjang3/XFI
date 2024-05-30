@@ -1,4 +1,2 @@
 set disassembly-flavor att
-set environment LD_PRELOAD ./preload_sandbox.so
-b foo
-r
+set environment LD_PRELOAD ./lib/xfi.so

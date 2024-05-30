@@ -1,25 +1,24 @@
+PARENT_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../)
+RESULT_DIR = ${PARENT_DIR}/result
+
 # Library-related                                                                                                                                                                                                                      
 SHELL           = /bin/zsh
 CC              = gcc
 ASMFLAGS		= -O0 -gdwarf-2 -save-temps=obj -c 
-LDFLAGS			= -T ${result_dir}/${name}/linker_script.ld
-
-parent_dir := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../)
-result_dir = ${parent_dir}/result
+LDFLAGS			= -T ${RESULT_DIR}/${name}/linker_script.ld
 
 %.out: %.c	# This is for one file
 	$(eval name := $(basename $@))	;\
 	print ${name}
-	print ${parent_dir} ${result_dir}
-	if [ ! -d  ${result_dir}/${name} ]; then \
-		mkdir ${result_dir}/${name} ;\
+	print ${PARENT_DIR} ${RESULT_DIR}
+	if [ ! -d  ${RESULT_DIR}/${name} ]; then \
+		mkdir ${RESULT_DIR}/${name} ;\
 	fi ;\
-	cp ./scripts/libMakefile  ${result_dir}/${name}/Makefile ;\
-	cp ./scripts/linker_script.ld ${result_dir}/${name} ;\
-	cp ./scripts/gdb_commands ${result_dir}/${name} ;\
-	$(CC) $(ASMFLAGS) $< -o ${result_dir}/${name}/${name}.o ;\
-	$(CC) $(LDFLAGS) ${result_dir}/${name}/${name}.o -o ${result_dir}/${name}/${name}.out ;\
-	objdump -d ${result_dir}/${name}/${name}.out &> ${result_dir}/${name}/${name}.objdump ;\
+	cp xfi.c ${RESULT_DIR}/${name} ;\
+	cp ./scripts/libMakefile  ${RESULT_DIR}/${name}/Makefile ;\
+	cp ./scripts/gdb_commands ${RESULT_DIR}/${name} ;\
+	$(CC) $(ASMFLAGS) $< -o ${RESULT_DIR}/${name}/${name}.o ;\
+	objdump -d ${RESULT_DIR}/${name}/${name}.o &> ${RESULT_DIR}/${name}/${name}.objdump ;\
 	
 clean:
 	shopt -s nullglob

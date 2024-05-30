@@ -1,38 +1,10 @@
 #define _GNU_SOURCE
-#include <dlfcn.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <fcntl.h>
 #include <sys/mman.h>
-#include <sys/stat.h>
-
-// Function pointers for the original functions
-void* (*original_mmap)(void*, size_t, int, int, int, off_t);
-int (*original_mprotect)(void*, size_t, int);
-
-// Our custom mmap function
-void* mmap(void* addr, size_t length, int prot, int flags, int fd, off_t offset) {
-    // Call the original mmap function
-    void* result = original_mmap(addr, length, prot, flags, fd, offset);
-    
-    // Custom behavior: Print a message
-    printf("Custom mmap: addr=%p, length=%zu, prot=%d, flags=%d, fd=%d, offset=%ld\n",
-           result, length, prot, flags, fd, offset);
-
-    return result;
-}
-
-// Our custom mprotect function
-int mprotect(void* addr, size_t len, int prot) {
-    // Call the original mprotect function
-    int result = original_mprotect(addr, len, prot);
-    
-    // Custom behavior: Print a message
-    printf("Custom mprotect: addr=%p, len=%zu, prot=%d\n", addr, len, prot);
-
-    return result;
-}
+#include <unistd.h>
+#include <string.h>
 
 void map_process(const char* filename) {
     // Open the file for reading
@@ -42,39 +14,64 @@ void map_process(const char* filename) {
         return;
     }
 
-    // Fetch the system's page size, used for aligning mmap offsets
-    long pagesize = sysconf(_SC_PAGESIZE);
-
     // Get the file size
-    struct stat st;
-    if (fstat(fd, &st) < 0) {
+    off_t filesize = lseek(fd, 0, SEEK_END);
+    if (filesize == -1) {
         perror("Failed to get file size");
         close(fd);
         return;
     }
-    size_t filesize = st.st_size;
 
-    // Map the file into memory
-    void* mapped = mmap(NULL, filesize, PROT_READ, MAP_PRIVATE, fd, 0);
-    if (mapped == MAP_FAILED) {
-        perror("Failed to mmap file");
+    // Reset the file offset to the beginning of the file
+    lseek(fd, 0, SEEK_SET);
+
+    // Allocate a buffer to read the file content
+    void* buffer = malloc(filesize);
+    if (buffer == NULL) {
+        perror("Failed to allocate buffer");
         close(fd);
         return;
     }
 
-    printf("File %s mapped at %p, size %zu\n", filename, mapped, filesize);
-
-    // Example of changing protection of the mapped memory
-    if (mprotect(mapped, filesize, PROT_READ | PROT_WRITE) < 0) {
-        perror("Failed to mprotect memory");
-        munmap(mapped, filesize);
+    // Read the file content into the buffer
+    ssize_t bytes_read = read(fd, buffer, filesize);
+    if (bytes_read != filesize) {
+        perror("Failed to read file content");
+        free(buffer);
         close(fd);
         return;
     }
 
-    printf("Memory protection changed to READ | WRITE\n");
+    // Allocate a new memory region for writing
+    void* new_mapped = mmap(NULL, filesize, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (new_mapped == MAP_FAILED) {
+        perror("Failed to allocate new memory area");
+        free(buffer);
+        close(fd);
+        return;
+    }
 
-    // Close the file descriptor
+    // Copy the content from the buffer to the new memory region
+    memcpy(new_mapped, buffer, filesize);
+
+    // Optionally, change memory protection of the new memory area to READ | EXECUTE if it contains code
+    if (mprotect(new_mapped, filesize, PROT_READ | PROT_EXEC) == -1) {
+        perror("mprotect failed");
+        munmap(new_mapped, filesize);
+        free(buffer);
+        close(fd);
+        return;
+    }
+
+    printf("File %s mapped at %p, size %ld\n", filename, new_mapped, filesize);
+    // Verify the content
+    if (memcmp(new_mapped, buffer, filesize) == 0) {
+        printf("Content copied successfully!\n");
+    } else {
+        printf("Content mismatch!\n");
+    }
+    // Clean up the buffer and close the file descriptor
+    free(buffer);
     close(fd);
 }
 
@@ -94,15 +91,4 @@ void init() {
 __attribute__((destructor))
 void cleanup() {
     printf("Cleaning up process...\n");
-}
-
-// Constructor to initialize function pointers
-__attribute__((constructor))
-void init_intercept() {
-    original_mmap = dlsym(RTLD_NEXT, "mmap");
-    original_mprotect = dlsym(RTLD_NEXT, "mprotect");
-    if (!original_mmap || !original_mprotect) {
-        fprintf(stderr, "Error loading original functions: %s\n", dlerror());
-        _exit(1);
-    }
 }

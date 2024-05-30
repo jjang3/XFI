@@ -2,29 +2,20 @@ SHELL           = /bin/zsh
 CC              = gcc
 CFLAGS	    	= -Wall -fPIC -shared
 LDFLAGS      	= -ldl -mfsgsbase
-LIBTARGET       = table.so
-LOADERTARGET	= loader.so
+LIBTARGET       = xfi.so
 
 %.new: %.s
 	$(eval name := $(basename $@))	;\
 	as $(PWD)/$< -o $(PWD)/${name}.o ;\
 	gcc $(PWD)/${name}.o -o $(PWD)/$@
 
-lib: $(LIBTARGET)
+xfi: $(LIBTARGET)
 	echo $(PWD)
 	if [ ! -d $(PWD)/lib ]; then mkdir -p $(PWD)/lib; fi
 	mv $(LIBTARGET) $(PWD)/lib
 
 $(LIBTARGET): 
-	$(CC) $(CFLAGS) table.c -o $@ $(LDFLAGS)
-
-loader: $(LOADERTARGET)
-	echo $(PWD)
-	if [ ! -d $(PWD)/loader ]; then mkdir -p $(PWD)/loader; fi
-	mv $(LOADERTARGET) $(PWD)/loader
-
-$(LOADERTARGET):
-	$(CC) $(CFLAGS) loader.c -o $@ $(LDFLAGS)
+	$(CC) $(CFLAGS) xfi.c -o $@ $(LDFLAGS)
 
 clean:
 	setopt NULLGLOB; \

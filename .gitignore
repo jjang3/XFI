@@ -1,5 +1,6 @@
 *.so
 result
 *.c
-!lib.c
-!loader.c
+!hello.c
+!xfi.c
+musl_build
