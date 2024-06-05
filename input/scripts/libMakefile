@@ -1,13 +1,14 @@
 SHELL           = /bin/zsh
-CC              = gcc
-CFLAGS	    	= -Wall -fPIC -shared
+CC              = $(HOME)/XFI/musl_build/bin/musl-gcc
+CFLAGS			= -static-pie -fPIC
+SHFLAGS	    	= -Wall -fPIC -shared
 LDFLAGS      	= -ldl -mfsgsbase
 LIBTARGET       = xfi.so
 
 %.new: %.s
 	$(eval name := $(basename $@))	;\
 	as $(PWD)/$< -o $(PWD)/${name}.o ;\
-	gcc $(PWD)/${name}.o -o $(PWD)/$@
+	$(CC) $(CFLAGS) $(PWD)/${name}.o -o $(PWD)/$@
 
 xfi: $(LIBTARGET)
 	echo $(PWD)
@@ -15,7 +16,7 @@ xfi: $(LIBTARGET)
 	mv $(LIBTARGET) $(PWD)/lib
 
 $(LIBTARGET): 
-	$(CC) $(CFLAGS) xfi.c -o $@ $(LDFLAGS)
+	$(CC) $(SHFLAGS) xfi.c -o $@ $(LDFLAGS)
 
 clean:
 	setopt NULLGLOB; \
