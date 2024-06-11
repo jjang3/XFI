@@ -1,10 +1,16 @@
-import fileinput
-import time
-import os, sys
+from pathlib import Path
+import sys
 import logging
 
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+
 # Get the same logger instance. Use __name__ to get a logger with a hierarchical name or a specific string to get the exact same logger.
-logger = logging.getLogger('main')
+rewriter_logger = logging.getLogger('main')
+
+import fileinput
+import time
+import os
+import shutil
 
 # Add the parent directory to sys.path
 parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -17,18 +23,7 @@ asm_macros = """	.section .data
 	.extern base_address
 """
 
-def rewriter(target_dir, target_file):
+def rewriter(target_file):
     patch_count = 0
-    file_path = None
-    if target_dir == None:
-        # This is for a binary with multiple object files and they are in their own separate location
-        file_path = target_file.asm_path
-        file_path_dir = os.path.dirname(file_path)
-        debug_file = file_path + ".bak"
-        if os.path.isfile(debug_file):
-            print("Copying debug file")
-            shutil.copyfile(debug_file, file_path)
-            time.sleep(2)
-        else:
-            print("No debug file exists")
+    rewriter_logger.info(f"Rewriting the assembly file: {target_file}")
     

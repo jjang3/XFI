@@ -1,36 +1,26 @@
 import logging
-import sys
-import fileinput
-import inspect
 import argparse
 import shutil
-import subprocess
-
-from enum import Enum, auto
-
-from pickle import FALSE
-from tkinter import N
-from termcolor import colored
-import os
-sys.path.append(os.path.join(os.getcwd(), 'asm_rewriter', 'src'))
-
+import sys
 from pathlib import Path
-import pprint 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
-import rewriter
+# Add the src directory to the system path
+sys.path.append(str(Path(__file__).resolve().parent / 'src'))
 
+from asm_analysis import *
+from bin_analysis import *
+from rewriter import *
+
+# Define the CustomFormatter class for colored output (optional)
 class CustomFormatter(logging.Formatter):
-    # FORMAT = "[%(filename)s:%(lineno)s - %(funcName)20s() ] %(message)s | %(levelname)s"
-    # logging.basicConfig(level=os.environ.get("LOGLEVEL", "DEBUG"), format=FORMAT)
     blue = "\x1b[33;34m"
     yellow = "\x1b[33;20m"
     red = "\x1b[31;20m"
     bold_green = "\x1b[42;1m"
     purp = "\x1b[38;5;13m"
     reset = "\x1b[0m"
-    # format = "%(funcName)5s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)"
-    format = "[%(filename)s: Line:%(lineno)4s - %(funcName)20s()] %(levelname)7s    %(message)s "
+    format = "[%(filename)15s: Line:%(lineno)d - %(funcName)s()] %(levelname)s: %(message)s"
 
     FORMATS = {
         logging.DEBUG: yellow + format + reset,
@@ -41,70 +31,75 @@ class CustomFormatter(logging.Formatter):
     }
 
     def format(self, record):
+        record.funcName = f"{record.funcName:>20}"  # Adjust the function name to be right-aligned with a width of 20 characters
         log_fmt = self.FORMATS.get(record.levelno)
         formatter = logging.Formatter(log_fmt)
         return formatter.format(record)
-    
-# Debug options here
-debug_level = logging.DEBUG
-# Set up the logger
-log = logging.getLogger(__name__)
-log.setLevel(debug_level)  # Set the debug level
-if not log.handlers:
-    ch = logging.StreamHandler()
-    ch.setLevel(logging.DEBUG)
-    ch.setFormatter(CustomFormatter())
-    log.addHandler(ch)
-log.propagate = False  # Disable propagation to prevent duplicate logging
 
-# create console handler with a higher log level
-log_disable = False
-log.addHandler(ch)
-log.disabled = log_disable
+# Create and configure logger
+custom_logger = logging.getLogger(__name__)
+custom_logger.setLevel(logging.DEBUG)
 
-@dataclass(unsafe_hash = True)
+# Create console handler
+ch = logging.StreamHandler()
+ch.setLevel(logging.DEBUG)
+
+# Create formatter and add it to the handler
+ch.setFormatter(CustomFormatter())
+
+# Add handler to the logger
+if not custom_logger.handlers:
+    custom_logger.addHandler(ch)
+
+# Ensure log propagation is disabled to prevent duplicate logs
+custom_logger.propagate = False
+
+def get_logger():
+    return custom_logger
+
+@dataclass(unsafe_hash=True)
 class FileData:
     name: str = None
     asm_path: str = None
     obj_path: str = None
+
+def process_dir(directory):
+    asm_files = sorted(directory.glob("*.s"))
+    obj_files = sorted(directory.glob("*.o"))
+
+    for asm_file, obj_file in zip(asm_files, obj_files):
+        temp_file = FileData(asm_file.stem, asm_file, obj_file)
+        custom_logger.info(f"ASM Path: {temp_file.asm_path}")
+        custom_logger.info(f"OBJ Path: {temp_file.obj_path}")
+        symbols = process_binary(temp_file.obj_path)
+        for symbol in symbols:
+            custom_logger.info(f"Symbol: {symbol.name} at {hex(symbol.address)}")
+        asm_analysis(temp_file.asm_path)
+        rewriter(temp_file.asm_path)
 
 def main():
     # Get the size of the terminal
     columns, rows = shutil.get_terminal_size(fallback=(80, 20))
 
     # Create a string that fills the terminal width with spaces
-    # Subtract 1 to accommodate the newline character at the end of the string
     empty_space = ' ' * (columns - 1)
     
-    # Call functions in an organized manner
     # Create the parser
     parser = argparse.ArgumentParser(description='Process some inputs.')
 
     # Add arguments
-    parser.add_argument('--binary', type=str, help='Path to a binary file')
-    parser.add_argument('--directory', type=str, help='Specify a directory (optional)', default=None)
+    parser.add_argument('--input', type=str, help='Specify an input (directory in the result)', default=None)
 
     # Parse arguments
     args = parser.parse_args()
     
-    if args.binary != None:
-        base_name       = Path(args.binary).stem  # Extracts the base name without extension
-    
-    if args.directory is not None:
-        target_dir = Path(os.path.abspath(args.directory))
+    base_name = Path(args.input).stem 
+    result_dir = Path(args.input).resolve().parent.parent / "result" / base_name
+    print(base_name)
+    if result_dir.is_dir():
+        process_dir(result_dir)
     else:
-        target_dir      = Path(args.binary).resolve().parent.parent / base_name
-        result_dir      = Path(args.binary).resolve().parent.parent / "result" / base_name    
-        
-        asm_item        = result_dir / f"{base_name}.s"  # Updated variable name for clarity
-        obj_item        = result_dir / f"{base_name}.o"  # Updated variable name for clarity
-        
-        temp_file = FileData(base_name)
-        temp_file.asm_path = asm_item
-        temp_file.obj_path = obj_item
-        log.info("Rewriting %s", asm_item)
-        rewriter.rewriter(None, temp_file)
+        custom_logger.error("Input file directory does not exist or is not a directory.")
 
-# Call main function
 if __name__ == '__main__':
     main()

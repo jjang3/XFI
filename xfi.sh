@@ -33,14 +33,17 @@ build()
         mkdir $input_result_path
     fi
     cd $input_path
-    cp "sandbox.c" $input_result_path
-    cp "loader.c" $input_result_path
+    # cp "sandbox.c" $input_result_path
+    # cp "loader.c" $input_result_path
+    cp "xfi.c" $input_result_path
     make ${input}.out
 }
 
 rewrite()
 {
     echo "Rewrite"
+    cd $rewrite_path
+    python3 main.py --input ${input}
 }
 
 while true; do
