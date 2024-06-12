@@ -21,6 +21,9 @@ rewrite_path=${current_path}/asm_rewriter
 input_result_path=${result_path}/$1
 bin_file=${input_result_path}/$1.out
 
+asm_bak_file=${input_result_path}/$1.s.bak
+asm_file=${input_result_path}/$1.s
+
 build()
 {
     echo "Build" 
@@ -42,6 +45,10 @@ build()
 rewrite()
 {
     echo "Rewrite"
+    if [ -f "$asm_bak_file" ]; then
+        echo "Backup file exists. Restoring it to the original assembly file."
+        cp $asm_bak_file $asm_file
+    fi
     cd $rewrite_path
     python3 main.py --input ${input}
 }

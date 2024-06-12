@@ -67,15 +67,24 @@ def process_dir(directory):
     asm_files = sorted(directory.glob("*.s"))
     obj_files = sorted(directory.glob("*.o"))
 
+    if not asm_files:
+        custom_logger.warning("No ASM files found in the directory.")
+    if not obj_files:
+        custom_logger.warning("No OBJ files found in the directory.")
+
+
     for asm_file, obj_file in zip(asm_files, obj_files):
         temp_file = FileData(asm_file.stem, asm_file, obj_file)
         custom_logger.info(f"ASM Path: {temp_file.asm_path}")
         custom_logger.info(f"OBJ Path: {temp_file.obj_path}")
+        
         symbols = process_binary(temp_file.obj_path)
         for symbol in symbols:
             custom_logger.info(f"Symbol: {symbol.name} at {hex(symbol.address)}")
-        asm_analysis(temp_file.asm_path)
-        rewriter(temp_file.asm_path)
+            
+        asm_insts: Dict
+        asm_insts = asm_analysis(temp_file.asm_path, symbols)
+        rewriter(temp_file.asm_path, asm_insts)
 
 def main():
     # Get the size of the terminal
