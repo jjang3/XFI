@@ -84,6 +84,7 @@ coreutils()
     if [ ! -f ${coreutils_src_path}/${input}_def.out ]; then
         echo "Default file doesn't exists."
         cp ${coreutils_src_path}/${input} ${coreutils_src_path}/${input}_def.out # Create a default copy of bin file
+    fi
     cp ${coreutils_src_path}/${input}.o $input_result_path
     cp ${coreutils_src_path}/${input}_def.out $input_result_path
     cp ${coreutils_src_path}/${input}.s $input_result_path

@@ -14,6 +14,7 @@ import fileinput
 import time
 import os
 import shutil
+import re
 
 # Add the parent directory to sys.path
 parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -56,10 +57,18 @@ asm_macros = """\t.section .data
 \tmovq\tbase_address(%rip), %r13
 \tsubq \t%r13, %r14
 \taddq\t%r15, %r14
-\t.if \\value == 8
-\t\tmovzbl (%r14), \\op  # 8-bit
-\t.elseif \\value == 16
-\t\tmovzx (%r14), \\op  # 16-bit
+\t.if \\value == 816
+\t\tmovzbw (%r14), \\op  # 8-bit to 16-bit zero-extension
+\t.elseif \\value == 832
+\t\tmovzbl (%r14), \\op  # 8-bit to 32-bit zero-extension
+\t.elseif \\value == 864
+\t\tmovzbq (%r14), \\op  # 8-bit to 64-bit zero-extension
+\t.elseif \\value == 1632
+\t\tmovzwl (%r14), \\op  # 16-bit to 32-bit zero-extension
+\t.elseif \\value == 1664
+\t\tmovzwq (%r14), \\op  # 16-bit to 64-bit zero-extension
+\t.elseif \\value == 3264
+\t\tmovzlq (%r14), \\op  # 32-bit to 64-bit zero-extension
 \t.endif
 .endm
 
@@ -80,12 +89,44 @@ asm_macros = """\t.section .data
 \t.endif
 .endm
 
-
 """
+
+def parse_inst(opcode):
+    rewriter_logger.info(f"Parsing the opcode: {opcode}")
+    
+    # This may need to be updated to support more diverse instructions, not just movz
+    movz_regex = re.compile(r'movz(?P<prefix>bw|bl|bq|wl|wq|lq)')
+    
+    # Search for the first match in the opcode
+    match = movz_regex.search(opcode.strip())
+
+    # Check if a match was found and print the matched instruction and its prefix
+    if match:
+        # rewriter_logger.info(f"Instruction: {match.group(0)}, Prefix: {match.group('prefix')}")
+        if match.group('prefix') == "bw":
+            value = 816 # 8 to 16
+        elif match.group('prefix') == "bl":
+            value = 832 # 8 to 32
+        elif match.group('prefix') == "bq":
+            value = 864 # 8 to 64
+        elif match.group('prefix') == "wl":
+            value = 1632 # 16 to 32
+        elif match.group('prefix') == "wq":
+            value = 1664 # 16 to 64
+        elif match.group('prefix') == "lq":
+            value = 3264 # 32 to 64
+        return value
+    else:
+        rewriter_logger.error("No match found.")
+
+# List of special instructions
+movz_instructions = ["movzbw", "movzbq", "movzwl", "movzwq", "movzlq", "movzbl"]
+no_prefix_instructions = ['call', 'jmp', 'ret', 'nop']
 
 def patch_inst(line, inst):
     inst: PatchingInst
     rewriter_logger.info(f"Patching the line: {line}")
+    inst.inst_print()
     # Example patching logic; modify as needed
     if inst.prefix == "b":
         value = 8
@@ -95,6 +136,8 @@ def patch_inst(line, inst):
         value = 32
     elif inst.prefix == "q":
         value = 64
+    elif inst.prefix == "":
+        value = parse_inst(inst.opcode)
     else:
         value = 0
         
@@ -104,11 +147,11 @@ def patch_inst(line, inst):
             xfi_inst = "mov_load_xfi"
         elif inst.patching_info == "dest":
             xfi_inst = "mov_store_xfi"
-    elif inst.opcode == "movzx":
+    elif inst.opcode in movz_instructions:
         if inst.patching_info == "src":
-            xfi_inst = "movzx_load_xfi"
+            xfi_inst = "movz_load_xfi"
         elif inst.patching_info == "dest":
-            xfi_inst = "movzx_store_xfi"
+            xfi_inst = "movz_store_xfi"
     elif inst.opcode == "lea":
         if inst.patching_info == "src":
             xfi_inst = "lea_load_xfi"
