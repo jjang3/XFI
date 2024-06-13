@@ -8,6 +8,33 @@ CUR_PATH=$( cd "$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
 # Modifying the musl-related files to preapre to build the musl
 echo ${CUR_PATH}
 
+"""
+This needs to be put into the crt1.c
+void get_base_address() {
+    unsigned long long addr;
+    __asm__ __volatile__(
+        "call 1f\n"               // Call next instruction to push the address on the stack
+        "1: pop %%rdi\n"          // Pop the return address into RDI (current address)
+        "movq %%rdi, %0\n"        // Move the current address into addr
+        : "=r" (addr)
+        :
+        : "rdi"
+    );
+
+    // Align the address to the page boundary
+    addr &= 0xfffffffffffff000;
+
+    // Traverse backward to find the start of the ELF headers
+    while (1) {
+        if (*(unsigned int*)addr == 0x464c457f) { // Check for ELF magic number
+            base_address = addr;
+            break;
+        }
+        addr -= 0x1000; // Move back by one page
+    }
+}
+"""
+
 # Add the global variable declaration
 CRT1_PATH=${CUR_PATH}"/musl/crt/crt1.c"
 echo $CRT1_PATH
