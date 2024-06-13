@@ -91,6 +91,8 @@ asm_macros = """\t.section .data
 
 """
 
+patch_count = 0
+
 def parse_inst(opcode):
     rewriter_logger.info(f"Parsing the opcode: {opcode}")
     
@@ -124,6 +126,7 @@ movz_instructions = ["movzbw", "movzbq", "movzwl", "movzwq", "movzlq", "movzbl"]
 no_prefix_instructions = ['call', 'jmp', 'ret', 'nop']
 
 def patch_inst(line, inst):
+    global patch_count
     inst: PatchingInst
     rewriter_logger.info(f"Patching the line: {line}")
     inst.inst_print()
@@ -164,8 +167,10 @@ def patch_inst(line, inst):
         original_inst = f"{inst.opcode}{inst.prefix} {inst.src}, {inst.dest}"
         # Format the patched line with proper indentation
         if inst.patching_info == "src":
+            patch_count += 1
             patched_line = f"\t{xfi_inst} {inst.src}, {inst.dest}, {value} \t# {original_inst}\n"
         elif inst.patching_info == "dest":
+            patch_count += 1
             patched_line = f"\t{xfi_inst} {inst.dest}, {inst.src}, {value} \t# {original_inst}\n"
     else:
         patched_line = line
@@ -173,6 +178,7 @@ def patch_inst(line, inst):
     return patched_line
 
 def rewriter(target_file, asm_insts):
+    global patch_count
     asm_insts: dict
     rewriter_logger.info(f"Rewriting the assembly file: {target_file}")
 
@@ -219,3 +225,4 @@ def rewriter(target_file, asm_insts):
     with open(target_file_str, 'w', encoding='utf-8') as file:
         file.write(asm_macros + "\n")
         file.writelines(patched_lines)
+    rewriter_logger.critical(f"Patch count: {patch_count}")

@@ -84,18 +84,43 @@ void print_section_content(void *address, size_t size) {
 }
 
 void map_section(int fd, Elf64_Shdr *shdr, const char *section_name, void *base_address) {
-    void *buffer = malloc(shdr->sh_size);
-    if (buffer == NULL) {
-        perror("Failed to allocate buffer");
-        return;
-    }
+    // void *buffer = malloc(shdr->sh_size);
+    // if (buffer == NULL) {
+    //     perror("Failed to allocate buffer");
+    //     return;
+    // }
+    void *buffer = NULL;
 
-    if (pread(fd, buffer, shdr->sh_size, shdr->sh_offset) != shdr->sh_size) {
-        perror("Failed to read section content");
-        free(buffer);
-        return;
+    // if (pread(fd, buffer, shdr->sh_size, shdr->sh_offset) != shdr->sh_size) {
+    //     perror("Failed to read section content");
+    //     free(buffer);
+    //     return;
+    // }
+
+    if (strcmp(section_name, ".bss") == 0) {
+        // For .bss section, allocate and zero-initialize memory
+        buffer = calloc(1, shdr->sh_size);
+        if (buffer == NULL) {
+            perror("Failed to allocate buffer for .bss section");
+            return;
+        }
+    } else {
+        // For other sections, read the content from the file
+        buffer = malloc(shdr->sh_size);
+        if (buffer == NULL) {
+            perror("Failed to allocate buffer");
+            return;
+        }
+
+        if (pread(fd, buffer, shdr->sh_size, shdr->sh_offset) != shdr->sh_size) {
+            perror("Failed to read section content");
+            free(buffer);
+            return;
+        }
     }
-    uintptr_t section_offset = (uintptr_t)shdr->sh_offset;
+    // uintptr_t section_offset = (uintptr_t)shdr->sh_offset;
+    // uintptr_t section_offset = (uintptr_t)shdr->sh_size;
+    uintptr_t section_offset = (uintptr_t)shdr->sh_addr;
 
     void *new_address = base_address + section_offset;
     printf("Base address: %p, Section address: %p\n", base_address, new_address);

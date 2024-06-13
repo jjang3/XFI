@@ -88,7 +88,7 @@ if parent_dir not in sys.path:
 no_prefix_instructions = {'call', 'jmp', 'ret', 'nop'}
 
 # Combined regex pattern to capture opcode, optional prefix, source, and destination
-pattern = re.compile(r'^\s*(?P<opcode>call|jmp|ret|nop|movzwl|movzwq|movzlq|movzbl|\w+?)(?P<prefix>[bwlq]?)\s+(?P<src>\$?[%\w.\-()]+)\s*,?\s*(?P<dest>\$?[%\w.\-()]+)?\s*$')
+pattern = re.compile(r'^\s*(?P<opcode>call|jmp|ret|nop|movzwl|movzwq|movzlq|movzbl|\w+?)(?P<prefix>[bwlq]?)\s+(?P<src>\$?[%\w.\-+()]+(?:\+\d+)?(?:\(\%?\w+\))?)\s*,?\s*(?P<dest>\$?[%\w.\-+()]+(?:\+\d+)?(?:\(\%?\w+\))?)?\s*$')
 
 def parse_assembly_line(line):
     match = pattern.match(line)
@@ -150,6 +150,9 @@ operand_pattern = re.compile(r'''
         | [-]?\d+\(\%?\w+,\%?\w+\)    # Base + index + displacement (e.g., 4(%eax,%ebx) or -4(%eax,%ebx))
         | [-]?\d+\(\%?\w+,\%?\w+,\d+\)# Base + index + scale + displacement (e.g., 4(%eax,%ebx,2) or -4(%eax,%ebx,2))
         | [\w.]+\(%rip\)          # RIP-relative addressing (e.g., .LC0(%rip) or hidden_var(%rip))
+        | [\w.]+\+\d+\(%rip\)     # New pattern for matching .+offset(%rip)
+        | \d+\+[.\w]+\(%rip\)     # New pattern for matching offset+symbol(%rip)
+        | [-]?\d*\+?[.\w]+\(%rip\) 
     )
     \s*$                          # Optional trailing whitespace and end of line
 ''', re.VERBOSE)
@@ -170,8 +173,11 @@ def parse_operand(operand, symbols):
             return OperandData(op_type='Register', value=value), symbol_found
         elif '(' in value:
             if value.endswith('(%rip)'):
-                label = value.split('(')[0].strip()
-                symbol_found = any(symbol.name == label for symbol in symbols)
+                label_match = re.match(r'([-]?\d*\+)?([.\w]+)\(%rip\)', value)
+                if label_match:
+                    disp, label = label_match.groups()
+                    disp = disp.strip('+') if disp else None
+                    symbol_found = any(symbol.name == label for symbol in symbols)
                 return OperandData(label=label, op_type='RIP-relative addressing'), symbol_found
             elif ',' in value:
                 parts = value.split('(')
@@ -199,13 +205,19 @@ functions_dict = {}
 def asm_analysis(target_file, symbols):
     asm_logger.info(f"Analyzing the assembly file: {target_file}")
     function_instructions, general_instructions = parse_assembly_file(target_file)
+    
+    # Tested symbols: wc_isprint, wc_isspace, debug, total_lines, total_words
+    count = 99
+    pprint(symbols[:count])
+    # exit()
+    copied_symbols = symbols[:count] # [count-1:count] specific debug
 
     for func, instructions in function_instructions.items():
         asm_logger.info(f"Analyzing function: {func}")
         for inst in instructions:
             inst: PatchingInst
-            inst.src_op, src_symbol_found = parse_operand(inst.src, symbols)
-            inst.dest_op, dest_symbol_found = parse_operand(inst.dest, symbols)
+            inst.src_op, src_symbol_found = parse_operand(inst.src, copied_symbols)
+            inst.dest_op, dest_symbol_found = parse_operand(inst.dest, copied_symbols)
             if src_symbol_found:
                 asm_logger.debug(f"Symbols found in src at inst line {inst.line_num}")
                 inst.patching_info = "src"
@@ -216,8 +228,8 @@ def asm_analysis(target_file, symbols):
 
     asm_logger.info("Analyzing general instructions")
     for inst in general_instructions:
-        inst.src_op, src_symbol_found = parse_operand(inst.src, symbols)
-        inst.dest_op, dest_symbol_found = parse_operand(inst.dest, symbols)
+        inst.src_op, src_symbol_found = parse_operand(inst.src, copied_symbols)
+        inst.dest_op, dest_symbol_found = parse_operand(inst.dest, copied_symbols)
         if src_symbol_found:
             asm_logger.debug(f"Symbols found in src at inst line {inst.line_num}")
             inst.patching_info = "src"
