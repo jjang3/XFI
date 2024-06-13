@@ -88,7 +88,7 @@ if parent_dir not in sys.path:
 no_prefix_instructions = {'call', 'jmp', 'ret', 'nop'}
 
 # Combined regex pattern to capture opcode, optional prefix, source, and destination
-pattern = re.compile(r'^\s*(?P<opcode>call|jmp|ret|nop|\w+?)(?P<prefix>[bwlq]?)\s+(?P<src>%[a-zA-Z0-9]+|[^,]+)\s*,?\s*(?P<dest>%[a-zA-Z0-9]+)?\s*$')
+pattern = re.compile(r'^\s*(?P<opcode>call|jmp|ret|nop|\w+?)(?P<prefix>[bwlq]?)\s+(?P<src>\$?[%\w.()]+)\s*,?\s*(?P<dest>\$?[%\w.()]+)?\s*$')
 
 def parse_assembly_line(line):
     match = pattern.match(line)

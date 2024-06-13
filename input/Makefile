@@ -22,4 +22,4 @@ LDFLAGS			= -T ${RESULT_DIR}/${name}/linker_script.ld
 	
 clean:
 	shopt -s nullglob
-	rm -rf lib *.o *.out *.i *.objdump
+	rm -rf lib *.o *.out *.i *.objdump *.s.bak xfi.c *.new

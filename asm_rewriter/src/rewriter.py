@@ -49,6 +49,23 @@ asm_macros = """\t.section .data
 \t\tmovq (%r14), \\op  # 64-bit
 \t.endif
 .endm
+
+.macro mov_store_xfi addr, op, value
+\trdgsbase %r15
+\tleaq\t\\addr, %r14
+\tmovq\tbase_address(%rip), %r13
+\tsubq \t%r13, %r14
+\taddq\t%r15, %r14
+\t.if \\value == 8
+\t\tmovb \\op, (%r14)  # 8-bit 
+\t.elseif \\value == 16
+\t\tmovw \\op, (%r14)  # 16-bit
+\t.elseif \\value == 32
+\t\tmovl \\op, (%r14)  # 32-bit
+\t.elseif \\value == 64
+\t\tmovq \\op, (%r14)  # 64-bit
+\t.endif
+.endm
 """
 
 def patch_inst(line, inst):
@@ -98,10 +115,9 @@ def rewriter(target_file, asm_insts):
     target_file_str = str(target_file)
 
     debug = False
-
     # Step 1: Patch the lines and collect them in a list
     patched_lines = []
-    with fileinput.input(target_file_str, inplace=False, encoding="utf-8", backup='.bak') as file:
+    with fileinput.input(target_file_str, inplace=(not debug), encoding="utf-8", backup='.bak') as file:
         line_num = 1
         current_function = None
         for line in file:
