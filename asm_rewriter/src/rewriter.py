@@ -50,6 +50,19 @@ asm_macros = """\t.section .data
 \t.endif
 .endm
 
+.macro movz_load_xfi addr, op, value
+\trdgsbase %r15
+\tleaq\t\\addr, %r14
+\tmovq\tbase_address(%rip), %r13
+\tsubq \t%r13, %r14
+\taddq\t%r15, %r14
+\t.if \\value == 8
+\t\tmovzbl (%r14), \\op  # 8-bit
+\t.elseif \\value == 16
+\t\tmovzx (%r14), \\op  # 16-bit
+\t.endif
+.endm
+
 .macro mov_store_xfi addr, op, value
 \trdgsbase %r15
 \tleaq\t\\addr, %r14
@@ -66,6 +79,8 @@ asm_macros = """\t.section .data
 \t\tmovq \\op, (%r14)  # 64-bit
 \t.endif
 .endm
+
+
 """
 
 def patch_inst(line, inst):
@@ -89,11 +104,17 @@ def patch_inst(line, inst):
             xfi_inst = "mov_load_xfi"
         elif inst.patching_info == "dest":
             xfi_inst = "mov_store_xfi"
+    elif inst.opcode == "movzx":
+        if inst.patching_info == "src":
+            xfi_inst = "movzx_load_xfi"
+        elif inst.patching_info == "dest":
+            xfi_inst = "movzx_store_xfi"
     elif inst.opcode == "lea":
         if inst.patching_info == "src":
             xfi_inst = "lea_load_xfi"
         elif inst.patching_info == "dest":
             xfi_inst = "lea_store_xfi"
+    
 
     if xfi_inst:
         # Prepare the original instruction as a comment

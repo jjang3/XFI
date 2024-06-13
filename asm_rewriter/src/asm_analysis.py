@@ -88,7 +88,7 @@ if parent_dir not in sys.path:
 no_prefix_instructions = {'call', 'jmp', 'ret', 'nop'}
 
 # Combined regex pattern to capture opcode, optional prefix, source, and destination
-pattern = re.compile(r'^\s*(?P<opcode>call|jmp|ret|nop|\w+?)(?P<prefix>[bwlq]?)\s+(?P<src>\$?[%\w.()]+)\s*,?\s*(?P<dest>\$?[%\w.()]+)?\s*$')
+pattern = re.compile(r'^\s*(?P<opcode>call|jmp|ret|nop|\w+?)(?P<prefix>[bwlq]?)\s+(?P<src>\$?[%\w.\-()]+)\s*,?\s*(?P<dest>\$?[%\w.\-()]+)?\s*$')
 
 def parse_assembly_line(line):
     match = pattern.match(line)
@@ -141,14 +141,14 @@ def parse_assembly_file(file_path):
 operand_pattern = re.compile(r'''
     ^\s*                          # Optional leading whitespace
     (
-        \$?\d+                    # Immediate value (e.g., $10)
+        \$?[-]?\d+                    # Immediate value (e.g., $10 or $-1)
         | %\w+                    # Register (e.g., %eax)
         | [\w.]+                  # Direct addressing (e.g., var or .LC0)
         | \(\%?\w+\)              # Indirect addressing (e.g., (%eax))
-        | \d+\(\%?\w+\)           # Base + displacement (e.g., 8(%ebp))
+        | [-]?\d+\(\%?\w+\)           # Base + displacement (e.g., 8(%ebp) or -8(%ebp))
         | \(\%?\w+,\%?\w+\)       # Indexed addressing (e.g., (%eax,%ebx))
-        | \d+\(\%?\w+,\%?\w+\)    # Base + index + displacement (e.g., 4(%eax,%ebx))
-        | \d+\(\%?\w+,\%?\w+,\d+\)# Base + index + scale + displacement (e.g., 4(%eax,%ebx,2))
+        | [-]?\d+\(\%?\w+,\%?\w+\)    # Base + index + displacement (e.g., 4(%eax,%ebx) or -4(%eax,%ebx))
+        | [-]?\d+\(\%?\w+,\%?\w+,\d+\)# Base + index + scale + displacement (e.g., 4(%eax,%ebx,2) or -4(%eax,%ebx,2))
         | [\w.]+\(%rip\)          # RIP-relative addressing (e.g., .LC0(%rip) or hidden_var(%rip))
     )
     \s*$                          # Optional trailing whitespace and end of line
