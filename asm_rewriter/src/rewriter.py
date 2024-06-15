@@ -23,22 +23,25 @@ if parent_dir not in sys.path:
 
 import main
 
-asm_macros = """\t.section .data
+asm_macros = """.section .data
 \t.extern base_address
+\tmask: .quad 0x100000000000  # Mask to keep only the topmost bit
 
 .macro lea_load_xfi addr, op, value
 \tleaq    \\addr, \\op
 \trdgsbase %r15
+\tandq    mask(%rip), %r15  # Use the fixed mask to keep only the topmost bit
 \tmovq\tbase_address(%rip), %r14
-\tsubq \t%r14, \\op
+\tsubq\t%r14, \\op
 \taddq\t%r15, \\op
 .endm
 
 .macro mov_load_xfi addr, op, value
 \trdgsbase %r15
+\tandq    mask(%rip), %r15  # Use the fixed mask to keep only the topmost bit
 \tleaq\t\\addr, %r14
 \tmovq\tbase_address(%rip), %r13
-\tsubq \t%r13, %r14
+\tsubq\t%r13, %r14
 \taddq\t%r15, %r14
 \t.if \\value == 8
 \t\tmovb (%r14), \\op  # 8-bit 
@@ -53,6 +56,7 @@ asm_macros = """\t.section .data
 
 .macro movz_load_xfi addr, op, value
 \trdgsbase %r15
+\tandq    mask(%rip), %r15  # Use the fixed mask to keep only the topmost bit
 \tleaq\t\\addr, %r14
 \tmovq\tbase_address(%rip), %r13
 \tsubq \t%r13, %r14
@@ -74,9 +78,10 @@ asm_macros = """\t.section .data
 
 .macro mov_store_xfi addr, op, value
 \trdgsbase %r15
+\tandq    mask(%rip), %r15  # Use the fixed mask to keep only the topmost bit
 \tleaq\t\\addr, %r14
 \tmovq\tbase_address(%rip), %r13
-\tsubq \t%r13, %r14
+\tsubq\t%r13, %r14
 \taddq\t%r15, %r14
 \t.if \\value == 8
 \t\tmovb \\op, (%r14)  # 8-bit 

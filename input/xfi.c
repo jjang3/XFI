@@ -11,7 +11,9 @@
 #define PAGE_SIZE 4096
 
 void *xfi_base_address = NULL;  // Global variable to store base address
+void *xfi_mmap_base_address = NULL; // Base address for mmap
 size_t xfi_size = 0;            // Global variable to store size of the mapped region
+void *text_section_end = NULL;  // Global variable to store end address of .text section
 
 unsigned long long get_section_offset(const char *filename, const char *section_name) {
     int fd = open(filename, O_RDONLY);
@@ -132,7 +134,11 @@ void map_section(int fd, Elf64_Shdr *shdr, const char *section_name, void *base_
     }
     
     memcpy(new_address, buffer, shdr->sh_size);
-    printf("Section %s mapped at %p, offset %lx, size %lx, aligned at %p\n", section_name, new_address, (long)shdr->sh_offset, (long)shdr->sh_size, new_address);
+    // printf("Section %s mapped at %p, offset %lx, size %lx, aligned at %p, ends at %p\n", section_name, new_address, (long)shdr->sh_offset, (long)shdr->sh_size, new_address, (new_address +(long)shdr->sh_size));
+    if (strcmp(section_name, ".text") == 0) {
+        text_section_end = new_address + shdr->sh_size;
+    }
+
 
     free(buffer);
 }
@@ -208,19 +214,22 @@ void __attribute__((constructor)) create_xfi() {
         xfi_size = 1024 * 1024; // 1MB, adjust as necessary
 
         // Request specific base address for new memory space
-        xfi_base_address = (void *)0x100000000000;
+        xfi_mmap_base_address = (void *)0x100000000000;
 
         // Map new memory space
-        xfi_base_address = mmap(xfi_base_address, xfi_size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
+        xfi_base_address = mmap(xfi_mmap_base_address, xfi_size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
         if (xfi_base_address == MAP_FAILED) {
             perror("Failed to allocate new memory space");
             return;
         }
-        _writegsbase_u64((long long unsigned int)xfi_base_address);
-        printf("New memory space allocated at %p\n", xfi_base_address);
         
         // Map the process data
         map_process(binary_path, xfi_base_address);
+        if (text_section_end != NULL) {
+            xfi_base_address = text_section_end;
+        }
+        _writegsbase_u64((long long unsigned int)xfi_base_address);
+        printf("New memory space allocated at %p\n", xfi_base_address);
     } else {
         perror("Failed to get binary path");
     }
@@ -228,8 +237,8 @@ void __attribute__((constructor)) create_xfi() {
 
 void __attribute__((destructor)) cleanup_xfi() {
     // Perform cleanup by unmapping the allocated memory space
-    if (xfi_base_address != NULL && xfi_size > 0) {
-        if (munmap(xfi_base_address, xfi_size) == -1) {
+    if (xfi_mmap_base_address != NULL && xfi_size > 0) {
+        if (munmap(xfi_mmap_base_address, xfi_size) == -1) {
             perror("Failed to unmap memory");
         } else {
             printf("Memory successfully unmapped\n");
