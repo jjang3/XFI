@@ -24,76 +24,94 @@ if parent_dir not in sys.path:
 import main
 
 asm_macros = """.section .data
-\t.extern base_address
-\tmask: .quad 0x100000000000  # Mask to keep only the topmost bit
+    .extern base_address
+    mask: .quad 0x100000000000  # Mask to keep only the topmost bit
 
 .macro lea_load_xfi addr, op, value
-\tleaq    \\addr, \\op
-\trdgsbase %r15
-\tandq    mask(%rip), %r15  # Use the fixed mask to keep only the topmost bit
-\tmovq\tbase_address(%rip), %r14
-\tsubq\t%r14, \\op
-\taddq\t%r15, \\op
+    leaq    \\addr, \\op
+    rdgsbase %r15
+    andq    mask(%rip), %r15  # Use the fixed mask to keep only the topmost bit
+    movq    base_address(%rip), %r14
+    subq    %r14, \\op
+    addq    %r15, \\op
 .endm
 
 .macro mov_load_xfi addr, op, value
-\trdgsbase %r15
-\tandq    mask(%rip), %r15  # Use the fixed mask to keep only the topmost bit
-\tleaq\t\\addr, %r14
-\tmovq\tbase_address(%rip), %r13
-\tsubq\t%r13, %r14
-\taddq\t%r15, %r14
-\t.if \\value == 8
-\t\tmovb (%r14), \\op  # 8-bit 
-\t.elseif \\value == 16
-\t\tmovw (%r14), \\op  # 16-bit
-\t.elseif \\value == 32
-\t\tmovl (%r14), \\op  # 32-bit
-\t.elseif \\value == 64
-\t\tmovq (%r14), \\op  # 64-bit
-\t.endif
+    rdgsbase %r15
+    andq    mask(%rip), %r15  # Use the fixed mask to keep only the topmost bit
+    leaq    \\addr, %r14
+    movq    base_address(%rip), %r13
+    subq    %r13, %r14
+    addq    %r15, %r14
+    .if \\value == 8
+        movb (%r14), \\op  # 8-bit 
+    .elseif \\value == 16
+        movw (%r14), \\op  # 16-bit
+    .elseif \\value == 32
+        movl (%r14), \\op  # 32-bit
+    .elseif \\value == 64
+        movq (%r14), \\op  # 64-bit
+    .endif
 .endm
 
 .macro movz_load_xfi addr, op, value
-\trdgsbase %r15
-\tandq    mask(%rip), %r15  # Use the fixed mask to keep only the topmost bit
-\tleaq\t\\addr, %r14
-\tmovq\tbase_address(%rip), %r13
-\tsubq \t%r13, %r14
-\taddq\t%r15, %r14
-\t.if \\value == 816
-\t\tmovzbw (%r14), \\op  # 8-bit to 16-bit zero-extension
-\t.elseif \\value == 832
-\t\tmovzbl (%r14), \\op  # 8-bit to 32-bit zero-extension
-\t.elseif \\value == 864
-\t\tmovzbq (%r14), \\op  # 8-bit to 64-bit zero-extension
-\t.elseif \\value == 1632
-\t\tmovzwl (%r14), \\op  # 16-bit to 32-bit zero-extension
-\t.elseif \\value == 1664
-\t\tmovzwq (%r14), \\op  # 16-bit to 64-bit zero-extension
-\t.elseif \\value == 3264
-\t\tmovzlq (%r14), \\op  # 32-bit to 64-bit zero-extension
-\t.endif
+    rdgsbase %r15
+    andq    mask(%rip), %r15  # Use the fixed mask to keep only the topmost bit
+    leaq    \\addr, %r14
+    movq    base_address(%rip), %r13
+    subq    %r13, %r14
+    addq    %r15, %r14
+    .if \\value == 816
+        movzbw (%r14), \\op  # 8-bit to 16-bit zero-extension
+    .elseif \\value == 832
+        movzbl (%r14), \\op  # 8-bit to 32-bit zero-extension
+    .elseif \\value == 864
+        movzbq (%r14), \\op  # 8-bit to 64-bit zero-extension
+    .elseif \\value == 1632
+        movzwl (%r14), \\op  # 16-bit to 32-bit zero-extension
+    .elseif \\value == 1664
+        movzwq (%r14), \\op  # 16-bit to 64-bit zero-extension
+    .elseif \\value == 3264
+        movzlq (%r14), \\op  # 32-bit to 64-bit zero-extension
+    .endif
 .endm
 
 .macro mov_store_xfi addr, op, value
-\trdgsbase %r15
-\tandq    mask(%rip), %r15  # Use the fixed mask to keep only the topmost bit
-\tleaq\t\\addr, %r14
-\tmovq\tbase_address(%rip), %r13
-\tsubq\t%r13, %r14
-\taddq\t%r15, %r14
-\t.if \\value == 8
-\t\tmovb \\op, (%r14)  # 8-bit 
-\t.elseif \\value == 16
-\t\tmovw \\op, (%r14)  # 16-bit
-\t.elseif \\value == 32
-\t\tmovl \\op, (%r14)  # 32-bit
-\t.elseif \\value == 64
-\t\tmovq \\op, (%r14)  # 64-bit
-\t.endif
+    rdgsbase %r15
+    andq    mask(%rip), %r15  # Use the fixed mask to keep only the topmost bit
+    leaq    \\addr, %r14
+    movq    base_address(%rip), %r13
+    subq    %r13, %r14
+    addq    %r15, %r14
+    .if \\value == 8
+        movb \\op, (%r14)  # 8-bit 
+    .elseif \\value == 16
+        movw \\op, (%r14)  # 16-bit
+    .elseif \\value == 32
+        movl \\op, (%r14)  # 32-bit
+    .elseif \\value == 64
+        movq \\op, (%r14)  # 64-bit
+    .endif
 .endm
 
+.macro ctrl_flow_xfi addr, mem 
+    rdgsbase %r15
+    xorq    mask(%rip), %r15  # Use the fixed mask to keep only the bottommost bit
+    .if \\mem    # mem indicates whether addr is memory or reg
+        leaq    \\addr, %r14
+    .else
+        movq    \\addr, %r14
+    .endif
+    movq    base_address(%rip), %r13
+    subq    %r13, %r14
+    cmpq    %r15, %r14    # Compare %r14 with %r15
+    # Conditional jump if %r14 is not less than %r15 to the interrupt
+    jge     trigger_interrupt
+.endm
+
+# Control-flow enforcement interrupt
+trigger_interrupt:
+    int3  # Example interrupt (Breakpoint Exception)
 """
 
 patch_count = 0

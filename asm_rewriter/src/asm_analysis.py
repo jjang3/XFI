@@ -85,12 +85,23 @@ if parent_dir not in sys.path:
     sys.path.append(parent_dir)
 
 # List of instructions that do not have prefixes
-no_prefix_instructions = {'call', 'jmp', 'ret', 'nop'}
+no_prefix_instructions = { 'nop',
+    'ja', 'jae', 'jb', 'jbe', 'jc', 'je', 'jg', 'jge', 'jl', 'jle', 'jna', 
+    'jnae', 'jnb', 'jnbe', 'jnc', 'jne', 'jng', 'jnge', 'jnl', 'jnle', 
+    'jno', 'jnp', 'jns', 'jnz', 'jo', 'jp', 'jpe', 'jpo', 'js', 'jz'
+} #     'call', 'jmp', 'ret', 'nop',
 
 # Combined regex pattern to capture opcode, optional prefix, source, and destination
 pattern = re.compile(r'^\s*(?P<opcode>call|jmp|ret|nop|movzwl|movzwq|movzlq|movzbl|\w+?)(?P<prefix>[bwlq]?)\s+(?P<src>\$?[%\w.\-+()]+(?:\+\d+)?(?:\(\%?\w+\))?)\s*,?\s*(?P<dest>\$?[%\w.\-+()]+(?:\+\d+)?(?:\(\%?\w+\))?)?\s*$')
 
+# Specialized pattern for indirect transfer instructions
+indirect_transfer_pattern = re.compile(
+    r'^\s*(?P<opcode>jmp|call|ret)\s*'
+    r'(?P<operand>\*?\$?[%\w.\-+()]+(?:\+\d+)?(?:\(\%?\w+\))?)?\s*$'
+)
+
 def parse_assembly_line(line):
+    indirect_match = indirect_transfer_pattern.match(line)
     match = pattern.match(line)
     if match:
         opcode = match.group('opcode')
@@ -100,9 +111,22 @@ def parse_assembly_line(line):
         # Determine the prefix based on whether the opcode is in the no_prefix_instructions set
         if opcode in no_prefix_instructions:
             prefix = ''
+            # asm_logger.warning(line)
         else:
             prefix = match.group('prefix')
 
+        return opcode, prefix, src, dest
+    elif indirect_match:
+        prefix = ''
+        opcode = indirect_match.group('opcode')
+        if indirect_match.group('operand'):
+            asm_logger.warning("  Indirect transfer found")
+            src = indirect_match.group('operand')
+            dest = None
+        else:
+            src = None
+            dest = None
+            asm_logger.warning("  No operand found")
         return opcode, prefix, src, dest
     return None
 
@@ -129,12 +153,13 @@ def parse_assembly_file(file_path):
                 if result:
                     opcode, prefix, src, dest = result
                     inst = PatchingInst(line_num, opcode, prefix, src, dest)
+                    inst.inst_print()
                     if current_function:
                         function_dict[current_function].append(inst)
                     else:
                         parsed_instructions.append(inst)
             line_num += 1
-
+        
     return function_dict, parsed_instructions
 
 # Condensed regex pattern to capture different addressing modes for an operand
@@ -205,7 +230,7 @@ functions_dict = {}
 def asm_analysis(target_file, symbols):
     asm_logger.info(f"Analyzing the assembly file: {target_file}")
     function_instructions, general_instructions = parse_assembly_file(target_file)
-    
+    exit()
     # Tested symbols: wc_isprint, wc_isspace, debug, total_lines, total_words
     count = 99
     pprint(symbols[:count])
