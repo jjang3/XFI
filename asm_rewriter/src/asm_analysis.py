@@ -91,6 +91,10 @@ no_prefix_instructions = { 'nop',
     'jno', 'jnp', 'jns', 'jnz', 'jo', 'jp', 'jpe', 'jpo', 'js', 'jz'
 } #     'call', 'jmp', 'ret', 'nop',
 
+indirect_instructions = {
+    'call', 'jmp', 'ret'
+}
+
 # Combined regex pattern to capture opcode, optional prefix, source, and destination
 pattern = re.compile(r'^\s*(?P<opcode>call|jmp|ret|nop|movzwl|movzwq|movzlq|movzbl|\w+?)(?P<prefix>[bwlq]?)\s+(?P<src>\$?[%\w.\-+()]+(?:\+\d+)?(?:\(\%?\w+\))?)\s*,?\s*(?P<dest>\$?[%\w.\-+()]+(?:\+\d+)?(?:\(\%?\w+\))?)?\s*$')
 
@@ -114,21 +118,20 @@ def parse_assembly_line(line):
             # asm_logger.warning(line)
         else:
             prefix = match.group('prefix')
-
         return opcode, prefix, src, dest
     elif indirect_match:
         prefix = ''
         opcode = indirect_match.group('opcode')
+        src = None
+        dest = None
         if indirect_match.group('operand'):
-            asm_logger.warning("  Indirect transfer found")
+            # asm_logger.warning("  Indirect transfer found")
             src = indirect_match.group('operand')
-            dest = None
-        else:
-            src = None
-            dest = None
-            asm_logger.warning("  No operand found")
+            # asm_logger.warning("  No operand found")
+        # print(opcode, prefix, src, dest)
         return opcode, prefix, src, dest
-    return None
+    else:
+        return None
 
 # parsed_instructions = []
 
@@ -142,7 +145,6 @@ def parse_assembly_file(file_path):
     with open(file_path, 'r') as file:
         for line in file:
             line = line.strip()
-
             if line.startswith('.type') and '@function' in line:
                 # Extract the function name
                 function_name = line.split()[1].strip('",')
@@ -153,7 +155,7 @@ def parse_assembly_file(file_path):
                 if result:
                     opcode, prefix, src, dest = result
                     inst = PatchingInst(line_num, opcode, prefix, src, dest)
-                    inst.inst_print()
+                    # inst.inst_print()
                     if current_function:
                         function_dict[current_function].append(inst)
                     else:
@@ -181,6 +183,22 @@ operand_pattern = re.compile(r'''
     )
     \s*$                          # Optional trailing whitespace and end of line
 ''', re.VERBOSE)
+
+# # Regex pattern to capture different addressing modes for an operand, excluding label-related operands
+# indirect_operand_pattern = re.compile(r'''
+#     ^\s*                          # Optional leading whitespace
+#     (
+#         \*?\$?[-]?\d+                    # Immediate value (e.g., $10 or $-1, with optional *)
+#         | \*?%\w+                    # Register (e.g., %rax, with optional *)
+#         | [\w.]+                  # Direct addressing (e.g., var or .LC0)
+#         | \*?\(\%?\w+\)              # Indirect addressing (e.g., (%rax), with optional *)
+#         | \*?[-]?\d+\(\%?\w+\)           # Base + displacement (e.g., 8(%rbp) or -8(%rbp), with optional *)
+#         | \*?\(\%?\w+,\%?\w+\)       # Indexed addressing (e.g., (%rax,%rbx), with optional *)
+#         | \*?[-]?\d+\(\%?\w+,\%?\w+\)    # Base + index + displacement (e.g., 4(%rax,%rbx) or -4(%rax,%rbx), with optional *)
+#         | \*?[-]?\d+\(\%?\w+,\%?\w+,\d+\)# Base + index + scale + displacement (e.g., 4(%rax,%rbx,2) or -4(%rax,%rbx,2), with optional *)
+#     )
+#     \s*$                          # Optional trailing whitespace and end of line
+# ''', re.VERBOSE)
 
 # Function to parse an operand and return an OperandData object
 def parse_operand(operand, symbols):
@@ -223,6 +241,36 @@ def parse_operand(operand, symbols):
             return op_data, symbol_found
     return OperandData(op_type='Unknown'), symbol_found
 
+# def parse_transfer_operand(operand):
+#     operand_found = False
+#     if operand is None or operand.strip() == "":
+#         return OperandData(op_type='Unknown'), operand_found
+    
+#     match = operand_pattern.match(operand)
+#     if match:
+#         operand_found = True
+#         value = match.group(1).lstrip('*')  # Remove leading '*' for easier parsing
+#         if value.startswith('$'):
+#             return OperandData(op_type='Immediate', value=value), operand_found
+#         elif value.startswith('%'):
+#             return OperandData(op_type='Register', value=value), operand_found
+#         elif '(' in value:
+#             if ',' in value:
+#                 parts = value.split('(')
+#                 disp = parts[0].strip() if parts[0] else None
+#                 inner_parts = parts[1].strip(')').split(',')
+#                 if len(inner_parts) == 2:
+#                     return OperandData(base=inner_parts[0].strip(), index=inner_parts[1].strip(), disp=disp, op_type='Indexed addressing'), operand_found
+#                 elif len(inner_parts) == 3:
+#                     return OperandData(base=inner_parts[0].strip(), index=inner_parts[1].strip(), disp=inner_parts[2].strip(), op_type='Base + index + scale + displacement'), operand_found
+#             else:
+#                 displacement, base = value.split('(')
+#                 base = base.strip(')')
+#                 return OperandData(base=base.strip(), disp=displacement.strip(), op_type='Base + displacement'), operand_found
+#         else:
+#             return OperandData(op_type='Direct addressing', value=value), operand_found
+#     else:
+#         return OperandData(op_type='Unknown'), operand_found
 
 # Dictionary to store functions and their corresponding instructions
 functions_dict = {}
@@ -230,25 +278,43 @@ functions_dict = {}
 def asm_analysis(target_file, symbols):
     asm_logger.info(f"Analyzing the assembly file: {target_file}")
     function_instructions, general_instructions = parse_assembly_file(target_file)
-    exit()
-    # Tested symbols: wc_isprint, wc_isspace, debug, total_lines, total_words
+    
     count = 99
     pprint(symbols[:count])
-    # exit()
     copied_symbols = symbols[:count] # [count-1:count] specific debug
 
     for func, instructions in function_instructions.items():
         asm_logger.info(f"Analyzing function: {func}")
         for inst in instructions:
             inst: PatchingInst
-            inst.src_op, src_symbol_found = parse_operand(inst.src, copied_symbols)
-            inst.dest_op, dest_symbol_found = parse_operand(inst.dest, copied_symbols)
-            if src_symbol_found:
-                asm_logger.debug(f"Symbols found in src at inst line {inst.line_num}")
-                inst.patching_info = "src"
-            if dest_symbol_found:
-                asm_logger.debug(f"Symbols found in dest at inst line {inst.line_num}")
-                inst.patching_info = "dest"
+            if inst.opcode not in indirect_instructions:
+                print()
+                asm_logger.warning("\tRegular instruction found")
+                # ---- Non control-flow instructions analysis ---- #
+                inst.src_op, src_symbol_found = parse_operand(inst.src, copied_symbols)
+                inst.dest_op, dest_symbol_found = parse_operand(inst.dest, copied_symbols)
+                if src_symbol_found:
+                    asm_logger.debug(f"\tSymbols found in src at inst line {inst.line_num}")
+                    inst.inst_print()
+                    inst.patching_info = "src"
+                if dest_symbol_found:
+                    asm_logger.debug(f"\tSymbols found in dest at inst line {inst.line_num}")
+                    inst.inst_print()
+                    inst.patching_info = "dest"
+            else:
+                print()
+                asm_logger.warning("\tIndirect transfer found")
+                if inst.src == None:
+                    asm_logger.debug("\tNo operand inst")
+                else:
+                    asm_logger.debug("\tOperand inst")
+                # inst.src_op, operand_found = parse_transfer_operand(inst.src)
+                # if operand_found:
+                #     asm_logger.debug(f"Symbols found in src at inst line {inst.line_num}")
+                #     inst.patching_info = "src"
+                # else:
+                #     asm_logger.debug(f"Symbols not found (e.g., ret) line {inst.line_num}")
+                inst.inst_print()
             # inst.inst_print()
 
     asm_logger.info("Analyzing general instructions")
