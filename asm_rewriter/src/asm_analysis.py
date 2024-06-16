@@ -58,7 +58,7 @@ class PatchingInst:
         padded_src_field = f"{src_field:<{src_field_length}}"
 
         asm_logger.debug(f"\nLine: {padded_line_field}\t| Opcode: {padded_opcode_field} | Prefix: {padded_prefix_field} | Source: {padded_src_field} | Dest: {self.dest}\n\t\t| Patching: {self.patching_info}")
-        
+        asm_logger.debug(self.src_op)
         print()
         # print("Source Operand:")
         # self.src_op.pretty_print()

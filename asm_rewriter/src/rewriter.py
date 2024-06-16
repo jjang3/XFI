@@ -3,7 +3,7 @@ import sys
 import logging
 from typing import *
 
-from asm_analysis import PatchingInst, parse_assembly_line
+from asm_analysis import PatchingInst, parse_assembly_line, OperandData
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
@@ -118,35 +118,41 @@ patch_count = 0
 
 def parse_inst(opcode):
     rewriter_logger.info(f"Parsing the opcode: {opcode}")
-    
-    # This may need to be updated to support more diverse instructions, not just movz
-    movz_regex = re.compile(r'movz(?P<prefix>bw|bl|bq|wl|wq|lq)')
-    
-    # Search for the first match in the opcode
-    match = movz_regex.search(opcode.strip())
+    # Define all your regex patterns
+    regex_patterns = [
+        re.compile(r'(?P<opcode>jmp|call|ret)'),            # Indirect transfer regex
+        re.compile(r'movz(?P<prefix>bw|bl|bq|wl|wq|lq)')    # movz instruction regex
+    ]
 
-    # Check if a match was found and print the matched instruction and its prefix
-    if match:
-        # rewriter_logger.info(f"Instruction: {match.group(0)}, Prefix: {match.group('prefix')}")
-        if match.group('prefix') == "bw":
-            value = 816 # 8 to 16
-        elif match.group('prefix') == "bl":
-            value = 832 # 8 to 32
-        elif match.group('prefix') == "bq":
-            value = 864 # 8 to 64
-        elif match.group('prefix') == "wl":
-            value = 1632 # 16 to 32
-        elif match.group('prefix') == "wq":
-            value = 1664 # 16 to 64
-        elif match.group('prefix') == "lq":
-            value = 3264 # 32 to 64
-        return value
-    else:
-        rewriter_logger.error("No match found.")
+    opcode = opcode.strip()
+    for pattern in regex_patterns:
+        match = pattern.search(opcode)
+        if match:
+            if 'prefix' in match.groupdict(): # movz instruction found
+                prefix = match.group('prefix')
+                if prefix == "bw":
+                    value = 816 # 8 to 16
+                elif prefix == "bl":
+                    value = 832 # 8 to 32
+                elif prefix == "bq":
+                    value = 864 # 8 to 64
+                elif prefix == "wl":
+                    value = 1632 # 16 to 32
+                elif prefix == "wq":
+                    value = 1664 # 16 to 64
+                elif prefix == "lq":
+                    value = 3264 # 32 to 64
+                return value
+            elif 'opcode' in match.groupdict(): # Indirect transfer found
+                return match.group('opcode')
+    rewriter_logger.error("No match found.")
+    return None
 
 # List of special instructions
 movz_instructions = ["movzbw", "movzbq", "movzwl", "movzwq", "movzlq", "movzbl"]
-no_prefix_instructions = ['call', 'jmp', 'ret', 'nop']
+indirect_instructions = ['call', 'jmp', 'ret']
+no_prefix_instruction = ['nop']
+
 
 def patch_inst(line, inst):
     global patch_count
@@ -163,10 +169,11 @@ def patch_inst(line, inst):
     elif inst.prefix == "q":
         value = 64
     elif inst.prefix == "":
-        value = parse_inst(inst.opcode)
+        value = parse_inst(inst.opcode) # If it is a bit more complex instruction such as movz, then parse more
     else:
         value = 0
         
+    original_inst = None
     xfi_inst = None
     if inst.opcode == "mov":
         if inst.patching_info == "src":
@@ -183,11 +190,22 @@ def patch_inst(line, inst):
             xfi_inst = "lea_load_xfi"
         elif inst.patching_info == "dest":
             xfi_inst = "lea_store_xfi"
+    elif inst.opcode in indirect_instructions:
+        xfi_inst = "ctrl_flow_xfi"
+        if inst.opcode == "call" or inst.opcode == "jmp":
+            original_inst = f"{inst.opcode}\t{inst.src}"
+        else:
+            # rewriter_logger.error(inst.opcode)
+            original_inst = f"{inst.opcode}"
+        if inst.patching_info == "reg":
+            value = 0 # register flag
+        elif inst.patching_info == "mem":
+            value = 1 # memory flag
     
-
     if xfi_inst:
         # Prepare the original instruction as a comment
-        original_inst = f"{inst.opcode}{inst.prefix} {inst.src}, {inst.dest}"
+        if original_inst == None:
+            original_inst = f"{inst.opcode}{inst.prefix} {inst.src}, {inst.dest}"
         # Format the patched line with proper indentation
         if inst.patching_info == "src":
             patch_count += 1
@@ -195,6 +213,19 @@ def patch_inst(line, inst):
         elif inst.patching_info == "dest":
             patch_count += 1
             patched_line = f"\t{xfi_inst} {inst.dest}, {inst.src}, {value} \t# {original_inst}\n"
+        else:
+            # original_inst = f"{inst.opcode}"
+            inst.src_op: OperandData
+            rewriter_logger.warning(f"Control flow transfer")
+            if inst.src_op != None and inst.src_op.op_type != "Label":
+                inst.inst_print()
+                patched_line = f"\t{xfi_inst} {inst.src_op.value}, {value}\n\t{original_inst}\n"
+                patch_count += 1
+            else:
+                # To-do: See how to patch the ret
+                patched_line = f"\t{original_inst}\n"
+                patch_count += 1
+            
     else:
         patched_line = line
     
@@ -231,7 +262,7 @@ def rewriter(target_file, asm_insts):
                 if result:
                     opcode, prefix, src, dest = result
                     temp_inst = PatchingInst(line_num, opcode, prefix, src, dest)
-                    # temp_inst.inst_print()
+                    temp_inst.inst_print()
                     for inst in current_function:
                         inst: PatchingInst
                         if inst.compare(temp_inst):
