@@ -14,7 +14,7 @@ from pprint import pprint
 
 @dataclass(unsafe_hash=True)
 class OperandData:
-    label: str = None   # For direct addressing and RIP-relative addressing
+    symbol: str = None   # For direct addressing and RIP-relative addressing
     base: str = None    # For base register in addressing
     index: str = None   # For index register in addressing
     disp: str = None    # For displacement
@@ -184,22 +184,6 @@ operand_pattern = re.compile(r'''
     \s*$                          # Optional trailing whitespace and end of line
 ''', re.VERBOSE)
 
-# # Regex pattern to capture different addressing modes for an operand, excluding label-related operands
-# indirect_operand_pattern = re.compile(r'''
-#     ^\s*                          # Optional leading whitespace
-#     (
-#         \*?\$?[-]?\d+                    # Immediate value (e.g., $10 or $-1, with optional *)
-#         | \*?%\w+                    # Register (e.g., %rax, with optional *)
-#         | [\w.]+                  # Direct addressing (e.g., var or .LC0)
-#         | \*?\(\%?\w+\)              # Indirect addressing (e.g., (%rax), with optional *)
-#         | \*?[-]?\d+\(\%?\w+\)           # Base + displacement (e.g., 8(%rbp) or -8(%rbp), with optional *)
-#         | \*?\(\%?\w+,\%?\w+\)       # Indexed addressing (e.g., (%rax,%rbx), with optional *)
-#         | \*?[-]?\d+\(\%?\w+,\%?\w+\)    # Base + index + displacement (e.g., 4(%rax,%rbx) or -4(%rax,%rbx), with optional *)
-#         | \*?[-]?\d+\(\%?\w+,\%?\w+,\d+\)# Base + index + scale + displacement (e.g., 4(%rax,%rbx,2) or -4(%rax,%rbx,2), with optional *)
-#     )
-#     \s*$                          # Optional trailing whitespace and end of line
-# ''', re.VERBOSE)
-
 # Function to parse an operand and return an OperandData object
 def parse_operand(operand, symbols):
     symbol_found = False
@@ -216,12 +200,12 @@ def parse_operand(operand, symbols):
             return OperandData(op_type='Register', value=value), symbol_found
         elif '(' in value:
             if value.endswith('(%rip)'):
-                label_match = re.match(r'([-]?\d*\+)?([.\w]+)\(%rip\)', value)
-                if label_match:
-                    disp, label = label_match.groups()
+                symb_match = re.match(r'([-]?\d*\+)?([.\w]+)\(%rip\)', value)
+                if symb_match:
+                    disp, symb = symb_match.groups()
                     disp = disp.strip('+') if disp else None
-                    symbol_found = any(symbol.name == label for symbol in symbols)
-                return OperandData(label=label, op_type='RIP-relative addressing'), symbol_found
+                    symbol_found = any(symbol.name == symb for symbol in symbols)
+                return OperandData(symbol=symb, op_type='RIP-relative addressing'), symbol_found
             elif ',' in value:
                 parts = value.split('(')
                 disp = parts[0].strip() if parts[0] else None
@@ -235,42 +219,70 @@ def parse_operand(operand, symbols):
                 base = base.strip(')')
                 return OperandData(base=base.strip(), disp=displacement.strip(), op_type='Base + displacement'), symbol_found
         else:
-            op_data = OperandData(label=value, op_type='Direct addressing')
+            op_data = OperandData(symbol=value, op_type='Direct addressing')
             if any(symbol.name == value for symbol in symbols):
                 symbol_found = True
             return op_data, symbol_found
     return OperandData(op_type='Unknown'), symbol_found
 
-# def parse_transfer_operand(operand):
-#     operand_found = False
-#     if operand is None or operand.strip() == "":
-#         return OperandData(op_type='Unknown'), operand_found
+# Define a regex pattern to match operands including indirect registers and labels
+indirect_operand_pattern = re.compile(r'\*?(0x[0-9a-fA-F]+|%?\w+(\([^\)]*\))?|\.L\d+|\w+)')
+
+# The pattern matches optional '*' followed by:
+# - a hexadecimal number (e.g., 0x1000)
+# - a register with optional displacement/indexing (e.g., %rax, 0x20(%rax), (%rax, %rbx), 0x20(%rax, %rbx, 4))
+
+def extract_operand(operand):
+    # Check if the operand is None or empty
+    if not operand or operand.strip() == "":
+        return OperandData(op_type='Unknown'), "reg"
     
-#     match = operand_pattern.match(operand)
-#     if match:
-#         operand_found = True
-#         value = match.group(1).lstrip('*')  # Remove leading '*' for easier parsing
-#         if value.startswith('$'):
-#             return OperandData(op_type='Immediate', value=value), operand_found
-#         elif value.startswith('%'):
-#             return OperandData(op_type='Register', value=value), operand_found
-#         elif '(' in value:
-#             if ',' in value:
-#                 parts = value.split('(')
-#                 disp = parts[0].strip() if parts[0] else None
-#                 inner_parts = parts[1].strip(')').split(',')
-#                 if len(inner_parts) == 2:
-#                     return OperandData(base=inner_parts[0].strip(), index=inner_parts[1].strip(), disp=disp, op_type='Indexed addressing'), operand_found
-#                 elif len(inner_parts) == 3:
-#                     return OperandData(base=inner_parts[0].strip(), index=inner_parts[1].strip(), disp=inner_parts[2].strip(), op_type='Base + index + scale + displacement'), operand_found
-#             else:
-#                 displacement, base = value.split('(')
-#                 base = base.strip(')')
-#                 return OperandData(base=base.strip(), disp=displacement.strip(), op_type='Base + displacement'), operand_found
-#         else:
-#             return OperandData(op_type='Direct addressing', value=value), operand_found
-#     else:
-#         return OperandData(op_type='Unknown'), operand_found
+    # Match the operand against the regex pattern
+    match = indirect_operand_pattern.match(operand)
+    if match:
+        value = match.group(1) if match.group(1) else match.group(0)
+        
+        # Handle indirect operands
+        if operand.startswith('*'):
+            if value.startswith('%'):
+                return OperandData(op_type='Indirect Register', value=value), "reg"
+            return OperandData(op_type='Indirect Memory', value=value), "mem"
+        
+        # Immediate operand
+        if value.startswith('$'):
+            return OperandData(op_type='Immediate', value=value), "reg"
+        
+        # Register operand
+        if value.startswith('%'):
+            return OperandData(op_type='Register', value=value), "reg"
+        
+        # Memory addressing modes
+        if '(' in value:
+            # Indexed addressing modes
+            parts = value.split('(')
+            disp = parts[0].strip() if parts[0] else None
+            inner_parts = parts[1].strip(')').split(',')
+            
+            # Base + index
+            if len(inner_parts) == 2:
+                return OperandData(base=inner_parts[0].strip(), index=inner_parts[1].strip(), disp=disp, op_type='Indexed addressing'), "mem"
+            
+            # Base + index + scale + displacement
+            if len(inner_parts) == 3:
+                return OperandData(base=inner_parts[0].strip(), index=inner_parts[1].strip(), disp=inner_parts[2].strip(), op_type='Base + index + scale + displacement'), "mem"
+            
+            # Base + displacement
+            displacement, base = value.split('(')
+            base = base.strip(')')
+            return OperandData(base=base.strip(), disp=displacement.strip(), op_type='Base + displacement'), "mem"
+        
+        # Direct addressing or label
+        if value.startswith('0x'):
+            return OperandData(op_type='Direct Hex Address', value=value), "mem"
+        return OperandData(op_type='Label', symbol=value), "reg"
+    
+    # If the operand doesn't match any known pattern
+    return OperandData(op_type='Unknown'), "reg"
 
 # Dictionary to store functions and their corresponding instructions
 functions_dict = {}
@@ -295,27 +307,23 @@ def asm_analysis(target_file, symbols):
                 inst.dest_op, dest_symbol_found = parse_operand(inst.dest, copied_symbols)
                 if src_symbol_found:
                     asm_logger.debug(f"\tSymbols found in src at inst line {inst.line_num}")
-                    inst.inst_print()
                     inst.patching_info = "src"
+                    inst.inst_print()
                 if dest_symbol_found:
                     asm_logger.debug(f"\tSymbols found in dest at inst line {inst.line_num}")
-                    inst.inst_print()
                     inst.patching_info = "dest"
+                    inst.inst_print()
             else:
                 print()
                 asm_logger.warning("\tIndirect transfer found")
                 if inst.src == None:
                     asm_logger.debug("\tNo operand inst")
+                    inst.patching_info = "ret"
                 else:
                     asm_logger.debug("\tOperand inst")
-                # inst.src_op, operand_found = parse_transfer_operand(inst.src)
-                # if operand_found:
-                #     asm_logger.debug(f"Symbols found in src at inst line {inst.line_num}")
-                #     inst.patching_info = "src"
-                # else:
-                #     asm_logger.debug(f"Symbols not found (e.g., ret) line {inst.line_num}")
+                    inst.src_op, patching_info = extract_operand(inst.src)
+                    inst.patching_info = patching_info
                 inst.inst_print()
-            # inst.inst_print()
 
     asm_logger.info("Analyzing general instructions")
     for inst in general_instructions:
@@ -327,6 +335,6 @@ def asm_analysis(target_file, symbols):
         if dest_symbol_found:
             asm_logger.debug(f"Symbols found in dest at inst line {inst.line_num}")
             inst.patching_info = "dest"
-        # inst.inst_print()
+        inst.inst_print()
         
     return function_instructions
