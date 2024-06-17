@@ -235,7 +235,8 @@ def patch_inst(line, inst):
                 patch_count += 1
             elif inst.patching_info == "ret":
                 # inst.inst_print()
-                patched_line = f"\t{xfi_inst}\n\t{original_inst}\n"
+                patched_line = f"\t{original_inst}\n"
+                # patched_line = f"\t{xfi_inst}\n\t{original_inst}\n" - factor doesn't work
                 patch_count += 1
             elif inst.src_op.op_type == "Label":
                 # inst.inst_print()

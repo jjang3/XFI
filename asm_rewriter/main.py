@@ -81,7 +81,7 @@ def process_dir(directory):
         symbols = process_binary(temp_file.obj_path)
         for symbol in symbols:
             custom_logger.info(f"Symbol: {symbol.name} at {hex(symbol.address)}")
-            
+        # exit()
         asm_insts: Dict
         asm_insts = asm_analysis(temp_file.asm_path, symbols)
         rewriter(temp_file.asm_path, asm_insts)
