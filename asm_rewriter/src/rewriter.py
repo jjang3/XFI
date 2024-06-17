@@ -109,6 +109,17 @@ asm_macros = """.section .data
     jge     trigger_interrupt
 .endm
 
+.macro ret_xfi
+	rdgsbase %r15
+    xorq    mask(%rip), %r15  # Use the fixed mask to keep only the bottommost bit
+    movq    (%rsp), %r14
+    movq    base_address(%rip), %r13
+    subq    %r13, %r14
+    cmpq    %r15, %r14    # Compare %r14 with %r15
+    # Conditional jump if %r14 is not less than %r15 to the interrupt
+    jge     trigger_interrupt
+.endm
+
 # Control-flow enforcement interrupt
 trigger_interrupt:
     int3  # Example interrupt (Breakpoint Exception)
@@ -158,7 +169,7 @@ def patch_inst(line, inst):
     global patch_count
     inst: PatchingInst
     rewriter_logger.info(f"Patching the line: {line}")
-    inst.inst_print()
+    # inst.inst_print()
     # Example patching logic; modify as needed
     if inst.prefix == "b":
         value = 8
@@ -191,10 +202,11 @@ def patch_inst(line, inst):
         elif inst.patching_info == "dest":
             xfi_inst = "lea_store_xfi"
     elif inst.opcode in indirect_instructions:
-        xfi_inst = "ctrl_flow_xfi"
         if inst.opcode == "call" or inst.opcode == "jmp":
+            xfi_inst = "ctrl_flow_xfi"
             original_inst = f"{inst.opcode}\t{inst.src}"
         else:
+            xfi_inst = "ret_xfi"
             # rewriter_logger.error(inst.opcode)
             original_inst = f"{inst.opcode}"
         if inst.patching_info == "reg":
@@ -218,13 +230,16 @@ def patch_inst(line, inst):
             inst.src_op: OperandData
             rewriter_logger.warning(f"Control flow transfer")
             if inst.src_op != None and inst.src_op.op_type != "Label":
-                inst.inst_print()
+                # inst.inst_print()
                 patched_line = f"\t{xfi_inst} {inst.src_op.value}, {value}\n\t{original_inst}\n"
                 patch_count += 1
-            else:
-                # To-do: See how to patch the ret
-                patched_line = f"\t{original_inst}\n"
+            elif inst.patching_info == "ret":
+                patched_line = f"\t{xfi_inst}\n\t{original_inst}\n"
                 patch_count += 1
+            elif inst.src_op.op_type == "Label":
+                # inst.inst_print()
+                rewriter_logger.warning("Direct label, skip")
+                patched_line = f"\t{original_inst}\n"
             
     else:
         patched_line = line
