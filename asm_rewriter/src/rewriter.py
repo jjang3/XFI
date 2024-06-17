@@ -234,6 +234,7 @@ def patch_inst(line, inst):
                 patched_line = f"\t{xfi_inst} {inst.src_op.value}, {value}\n\t{original_inst}\n"
                 patch_count += 1
             elif inst.patching_info == "ret":
+                # inst.inst_print()
                 patched_line = f"\t{xfi_inst}\n\t{original_inst}\n"
                 patch_count += 1
             elif inst.src_op.op_type == "Label":
@@ -283,7 +284,12 @@ def rewriter(target_file, asm_insts):
                         if inst.compare(temp_inst):
                             temp_inst.patching_info = inst.patching_info # Upon finding the patch target, update the info
                             rewriter_logger.critical("Patching found")
-                            original_line = patch_inst(original_line, inst)
+                            # rewriter_logger.warning("%s %s", function_name, inst.opcode)
+                            if inst.opcode == "ret" and function_name == "main": # Don't patch ret in main
+                                rewriter_logger.warning("Skip main - ret patching")
+                                continue
+                            else:
+                                original_line = patch_inst(original_line, inst)
                             rewriter_logger.debug(original_line)
                             break
 
