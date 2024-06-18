@@ -117,12 +117,17 @@ asm_macros = """.section .data
     subq    %r13, %r14
     cmpq    %r15, %r14    # Compare %r14 with %r15
     # Conditional jump if %r14 is not less than %r15 to the interrupt
+    # int3
     jge     trigger_interrupt
 .endm
 
 # Control-flow enforcement interrupt
 trigger_interrupt:
-    int3  # Example interrupt (Breakpoint Exception)
+    # int3
+    mov $60, %rax    # syscall number for sys_exit
+    xor %rdi, %rdi   # exit code 0
+    syscall        # make the syscall
+    # int3  # Example interrupt (Breakpoint Exception)
 """
 
 patch_count = 0
@@ -236,8 +241,8 @@ def patch_inst(line, inst):
             elif inst.patching_info == "ret":
                 # inst.inst_print()
                 patched_line = f"\t{original_inst}\n"
-                # patched_line = f"\t{xfi_inst}\n\t{original_inst}\n" - factor doesn't work
-                patch_count += 1
+                # patched_line = f"\t{xfi_inst}\n\t{original_inst}\n" # - factor / sort doesn't work
+                # patch_count += 1
             elif inst.src_op.op_type == "Label":
                 # inst.inst_print()
                 rewriter_logger.warning("Direct label, skip")
