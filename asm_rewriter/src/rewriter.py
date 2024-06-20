@@ -25,6 +25,7 @@ import main
 
 asm_macros = """.section .data
     .extern base_address
+    .extern shadow_stack_ptr
     mask: .quad 0x100000000000  # Mask to keep only the topmost bit
 
 .macro lea_load_xfi addr, op, value
@@ -116,18 +117,34 @@ asm_macros = """.section .data
     movq    base_address(%rip), %r13
     subq    %r13, %r14
     cmpq    %r15, %r14    # Compare %r14 with %r15
-    # Conditional jump if %r14 is not less than %r15 to the interrupt
-    # int3
     jge     trigger_interrupt
 .endm
 
+.macro push_shadow_stack
+    movq    shadow_stack_ptr(%rip), %r10
+    movq    (%rsp), %r11        # Save the return address of caller function to %r11
+    movq    %r11, (%r10)        # Store return address in shadow stack
+    addq    $8, %r10            # Move shadow stack pointer
+    movq    %r10, shadow_stack_ptr(%rip)  # Update shadow stack pointer
+.endm
+
+.macro pop_shadow_stack
+    subq    $8, shadow_stack_ptr(%rip)    # Move shadow stack pointer back
+    movq    shadow_stack_ptr(%rip), %r10
+    movq    (%r10), %r11          	# Retrieve return address from shadow stack
+.endm
+"""
+
+end_macros="""
 # Control-flow enforcement interrupt
 trigger_interrupt:
-    # int3
-    mov $60, %rax    # syscall number for sys_exit
-    xor %rdi, %rdi   # exit code 0
-    syscall        # make the syscall
-    # int3  # Example interrupt (Breakpoint Exception)
+	cmpq (%rsp), %r11
+	je safe_exec
+    int3 # If shadow stack fails, then trace trap
+
+safe_exec:
+	ret
+
 """
 
 patch_count = 0
@@ -137,7 +154,8 @@ def parse_inst(opcode):
     # Define all your regex patterns
     regex_patterns = [
         re.compile(r'(?P<opcode>jmp|call|ret)'),            # Indirect transfer regex
-        re.compile(r'movz(?P<prefix>bw|bl|bq|wl|wq|lq)')    # movz instruction regex
+        re.compile(r'movz(?P<prefix>bw|bl|bq|wl|wq|lq)'),    # movz instruction regex
+        re.compile(r'(?P<directive>\.cfi_startproc)')
     ]
 
     opcode = opcode.strip()
@@ -161,6 +179,8 @@ def parse_inst(opcode):
                 return value
             elif 'opcode' in match.groupdict(): # Indirect transfer found
                 return match.group('opcode')
+            elif 'directive' in match.groupdict(): # Start fun found
+                return match.group('directive')
     rewriter_logger.error("No match found.")
     return None
 
@@ -218,11 +238,15 @@ def patch_inst(line, inst):
             value = 0 # register flag
         elif inst.patching_info == "mem":
             value = 1 # memory flag
+    elif inst.opcode == ".cfi_startproc":
+        original_inst = f"{inst.opcode}" # Save the cfi_startproc inst
+        xfi_inst = "\tpush_shadow_stack"
     
     if xfi_inst:
         # Prepare the original instruction as a comment
         if original_inst == None:
             original_inst = f"{inst.opcode}{inst.prefix} {inst.src}, {inst.dest}"
+            
         # Format the patched line with proper indentation
         if inst.patching_info == "src":
             patch_count += 1
@@ -230,6 +254,9 @@ def patch_inst(line, inst):
         elif inst.patching_info == "dest":
             patch_count += 1
             patched_line = f"\t{xfi_inst} {inst.dest}, {inst.src}, {value} \t# {original_inst}\n"
+        elif inst.opcode == ".cfi_startproc":
+            patch_count += 1
+            patched_line = f"\t{original_inst}\n{xfi_inst}\n"
         else:
             # original_inst = f"{inst.opcode}"
             inst.src_op: OperandData
@@ -240,14 +267,13 @@ def patch_inst(line, inst):
                 patch_count += 1
             elif inst.patching_info == "ret":
                 # inst.inst_print()
-                patched_line = f"\t{original_inst}\n"
-                # patched_line = f"\t{xfi_inst}\n\t{original_inst}\n" # - factor / sort doesn't work
-                # patch_count += 1
+                # patched_line = f"\t{original_inst}\n"
+                patched_line = f"\tpop_shadow_stack\n\t{xfi_inst}\n\t{original_inst}\n" # - factor / sort doesn't work
+                patch_count += 1
             elif inst.src_op.op_type == "Label":
                 # inst.inst_print()
                 rewriter_logger.warning("Direct label, skip")
-                patched_line = f"\t{original_inst}\n"
-            
+                patched_line = f"\t{original_inst}\n" 
     else:
         patched_line = line
     
@@ -279,26 +305,37 @@ def rewriter(target_file, asm_insts):
             if line.startswith('.cfi_endproc'):
                 current_function = None
 
+            # Insert end_macros before .Letext0
+            if line == ".Letext0:":
+                patched_lines.append(end_macros)
+
             if current_function is not None:
                 result = parse_assembly_line(line)
-                if result:
+                if result != None:
                     opcode, prefix, src, dest = result
-                    temp_inst = PatchingInst(line_num, opcode, prefix, src, dest)
-                    temp_inst.inst_print()
-                    for inst in current_function:
-                        inst: PatchingInst
-                        if inst.compare(temp_inst):
-                            temp_inst.patching_info = inst.patching_info # Upon finding the patch target, update the info
-                            rewriter_logger.critical("Patching found")
-                            # rewriter_logger.warning("%s %s", function_name, inst.opcode)
-                            if inst.opcode == "ret" and function_name == "main": # Don't patch ret in main
-                                rewriter_logger.warning("Skip main - ret patching")
-                                continue
-                            else:
+                    if opcode == ".cfi_startproc":
+                        temp_inst = PatchingInst(line_num, opcode, prefix, src, dest)
+                        rewriter_logger.critical("Starter patching found")
+                        original_line = patch_inst(original_line, temp_inst)
+                        rewriter_logger.debug(original_line)
+                        # break
+                    else:
+                        temp_inst = PatchingInst(line_num, opcode, prefix, src, dest)
+                        temp_inst.inst_print()
+                        for inst in current_function:
+                            inst: PatchingInst
+                            if inst.compare(temp_inst):
+                                temp_inst.patching_info = inst.patching_info # Upon finding the patch target, update the info
+                                rewriter_logger.critical("Patching found")
+                                rewriter_logger.warning("%s %s", function_name, inst.opcode)
+                                # if inst.opcode == "ret" and function_name != "main": # Don't patch ret in main
+                                #     rewriter_logger.warning("Skip main - ret patching")
+                                #     continue
+                                # else:
                                 original_line = patch_inst(original_line, inst)
-                            rewriter_logger.debug(original_line)
-                            break
-
+                                rewriter_logger.debug(original_line)
+                                break
+                    
             patched_lines.append(original_line)  # Collect the patched lines
             line_num += 1  # Increment the line number for each line
 

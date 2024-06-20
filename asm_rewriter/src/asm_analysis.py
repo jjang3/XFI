@@ -104,7 +104,10 @@ indirect_transfer_pattern = re.compile(
     r'(?P<operand>\*?\$?[%\w.\-+()]+(?:\+\d+)?(?:\(\%?\w+\))?)?\s*$'
 )
 
+start_fun_pattern = re.compile(r'^\s*(?P<directive>\.cfi_startproc)\s*')
+
 def parse_assembly_line(line):
+    start_match = start_fun_pattern.match(line)
     indirect_match = indirect_transfer_pattern.match(line)
     match = pattern.match(line)
     if match:
@@ -130,6 +133,12 @@ def parse_assembly_line(line):
             # asm_logger.warning("  No operand found")
         # print(opcode, prefix, src, dest)
         return opcode, prefix, src, dest
+    elif start_match:
+        prefix = ''
+        directive = start_match.group('directive')
+        src = None
+        dest = None
+        return directive, prefix, src, dest
     else:
         return None
 
